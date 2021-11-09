@@ -90,7 +90,9 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
+  /* the DMA's RCC clock must be on before UART or TIM are initialized,
+   * since their MspInit()s set up DMA's without enabling their RCC bits */
+  MX_DMA_Init();
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
