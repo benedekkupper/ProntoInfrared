@@ -234,6 +234,7 @@ static void MX_TIM2_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM2_Init 2 */
+  __HAL_DBGMCU_FREEZE_TIM2();
 
   /* USER CODE END TIM2_Init 2 */
 
@@ -292,6 +293,7 @@ static void MX_TIM15_Init(void)
   TIM_BDTRInitStruct.AutomaticOutput = LL_TIM_AUTOMATICOUTPUT_ENABLE;
   LL_TIM_BDTR_Init(TIM15, &TIM_BDTRInitStruct);
   /* USER CODE BEGIN TIM15_Init 2 */
+  __HAL_DBGMCU_FREEZE_TIM15();
 
   /* USER CODE END TIM15_Init 2 */
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOA);
