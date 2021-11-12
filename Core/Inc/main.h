@@ -81,6 +81,9 @@ void Error_Handler(void);
 #define VCP_RX_GPIO_Port GPIOA
 #define LD3_Pin GPIO_PIN_3
 #define LD3_GPIO_Port GPIOB
+void   MX_USART2_UART_Init(void);
+void   MX_TIM2_Init(void);
+void   MX_TIM15_Init(void);
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */
