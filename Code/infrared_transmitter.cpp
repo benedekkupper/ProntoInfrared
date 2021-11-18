@@ -40,16 +40,18 @@ bool transmitter::busy() const
     return LL_TIM_IsEnabledCounter(stm32::ir_pwm_timer::tx()->regmap());
 }
 
-bool transmitter::send(const pronto_hex::raw &code, complete_callback callback, size_t repeats)
+bool transmitter::send(pronto_hex::raw &code, callback cbk, size_t repeats)
 {
     if (busy())
     {
         return false;
     }
 
+    // TODO: sort out how the repeating part should really be handled
+
     // prepare context
     _current_code = &code;
-    _complete_cbk = callback;
+    _complete_cbk = cbk;
     if (code.once_length() > 0)
     {
         // starting with once part of the code
@@ -181,11 +183,11 @@ void transmitter::preload_next_symbol()
 
 void transmitter::send_cleanup()
 {
-    // TODO: delete owned code
+    // delete owned code
     if (_complete_cbk)
     {
-        _complete_cbk(*_current_code);
+        _complete_cbk(const_cast<pronto_hex::raw*>(_current_code));
     }
     _current_code = nullptr;
-    _complete_cbk = nullptr;
+    _complete_cbk = callback();
 }

@@ -94,7 +94,7 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   /* USER CODE BEGIN 2 */
-  return app_main();
+  app_main();
   /* USER CODE END 2 */
 
   /* Infinite loop */

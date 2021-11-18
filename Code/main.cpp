@@ -32,7 +32,7 @@ pronto_hex::static_raw<3 + 2> testsignal ( 37000,
 
 extern "C" int app_main()
 {
-    infrared::transmitter::instance().send(testsignal, nullptr, 3);
+    infrared::transmitter::instance().send(testsignal, 3);
 
     while (1)
     {

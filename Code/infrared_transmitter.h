@@ -23,21 +23,33 @@
 #define __INFRARED_TRANSMITTER_H_
 
 #include "pronto_hex.h"
-
-using complete_callback = void (*)(const pronto_hex::raw &);
+#include "etl/delegate.h"
 
 namespace infrared
 {
     class transmitter
     {
     public:
+        using callback = etl::delegate<void(pronto_hex::raw *)>;
+
         static transmitter& instance()
         {
             static transmitter t;
             return t;
         }
 
-        bool send(const pronto_hex::raw &code, complete_callback callback = nullptr, size_t repeats = 0);
+        template<typename T>
+        bool send(std::unique_ptr<pronto_hex::raw, T> code, size_t repeats = 0)
+        {
+            return send(*code.release(), callback::create<T>(code.get_deleter()), repeats);
+        }
+
+        bool send(pronto_hex::raw &code, callback cbk, size_t repeats = 0);
+
+        inline bool send(const pronto_hex::raw &code, size_t repeats = 0)
+        {
+            return send(*const_cast<pronto_hex::raw*>(&code), callback(), repeats);
+        }
 
         bool busy() const;
 
@@ -49,7 +61,7 @@ namespace infrared
 
         transmitter();
 
-        complete_callback _complete_cbk = nullptr;
+        callback _complete_cbk = callback();
         const pronto_hex::raw *_current_code = nullptr;
         const pronto_hex::word *_current_symbol_length = nullptr;
         size_t _remaining_symbols = 0;

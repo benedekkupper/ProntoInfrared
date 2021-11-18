@@ -1,5 +1,5 @@
 /**********************************************************************
- * @file    pronto_hex.h
+ * @file    pronto_hex.cpp
  * @author  Benedek Kupper
  * @version 1.0
  * @brief   Pronto HEX infrared code format

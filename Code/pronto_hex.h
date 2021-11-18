@@ -198,7 +198,7 @@ namespace pronto_hex
     template<const size_t PAIRS_COUNT>
     class static_raw : public raw
     {
-        static_assert(PAIRS_COUNT > 0);
+        static_assert(PAIRS_COUNT > 0, "Burst pairs must be present in any raw code");
 
         using this_type = static_raw<PAIRS_COUNT>;
 
@@ -255,7 +255,7 @@ namespace pronto_hex
             // beginning of new mark after space
             if (pair->wLEDoff > 0)
             {
-                assert(max_size() > (sequence_length()));
+                assert(max_size() > sequence_length());
 
                 nseq++;
                 pair++;
@@ -264,7 +264,7 @@ namespace pronto_hex
             pair->wLEDflash_on++;
         }
 
-        ETL_CONSTEXPR void append_spaces(word count, occurs occur = occurs::ONCE)
+        ETL_CONSTEXPR void append_spaces(word count)
         {
             auto pair = &last_pair();
             assert(pair->wLEDflash_on > 0);
