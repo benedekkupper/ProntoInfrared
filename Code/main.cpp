@@ -31,27 +31,100 @@ pronto_hex::static_raw<3 + 2> testsignal ( 37000,
         { 0x0006, 0x0003, 0x0003, 0x000C }
 );
 
+static constexpr size_t PRONTO_STRING_BUFFER_SIZE = 512;
+
+static std::array<char, PRONTO_STRING_BUFFER_SIZE> rx_buffer;
+static std::array<char, PRONTO_STRING_BUFFER_SIZE> tx_buffer;
+
+extern UART_HandleTypeDef huart2;
+static UART_HandleTypeDef *const uart = &huart2;
+
 static void received_code(const pronto_hex::raw &code)
 {
-    // some way to debug the result
-    volatile int x = code.carrier_frequency();
-    x++;
+    auto slen = code.to_string(tx_buffer);
+    if ((slen > 0) && (slen <= tx_buffer.size() - 2))
+    {
+        tx_buffer[slen++] = '\n';
+        tx_buffer[slen++] = '\r';
+        HAL_UART_Transmit_DMA(uart, reinterpret_cast<uint8_t*>(tx_buffer.data()), slen);
+    }
+}
+
+static void process_uart_rx()
+{
+    static int start_index = -1;
+    static size_t processed_index = 0;
+
+    if ((HAL_UART_GetState(uart) & HAL_UART_STATE_BUSY_RX) != HAL_UART_STATE_BUSY_RX)
+    {
+        HAL_UART_Receive_DMA(uart, reinterpret_cast<uint8_t*>(rx_buffer.data()), rx_buffer.size());
+        start_index = -1;
+        processed_index = 0;
+    }
+    else
+    {
+        size_t remaining =  __HAL_DMA_GET_COUNTER(uart->hdmarx);
+        size_t last_index = rx_buffer.size() - remaining;
+
+        // first find the first 0 digit
+        if ((start_index < 0) && (processed_index < last_index))
+        {
+            for (auto &i = processed_index; i < last_index; i++)
+            {
+                auto c = rx_buffer[i];
+                if (c == '0')
+                {
+                    start_index = i;
+                    break;
+                }
+            }
+        }
+
+        // then find the line termination
+        if ((start_index >= 0) && (processed_index < last_index))
+        {
+            for (auto &i = processed_index; i < last_index; i++)
+            {
+                auto c = rx_buffer[i];
+                if ((c == '\n') || (c == '\r'))
+                {
+                    auto code_str = etl::span<const char>(&rx_buffer[start_index], processed_index - start_index);
+                    auto code = pronto_hex::raw::from_string(code_str);
+                    if (code.get() != nullptr)
+                    {
+                        infrared::transmitter::instance().send(std::move(code));
+                    }
+
+                    HAL_UART_AbortReceive(uart);
+                    break;
+                }
+            }
+        }
+
+    }
 }
 
 extern "C" int app_main()
 {
+    using ir_tx = infrared::transmitter;
+    using ir_rx = infrared::receiver;
+
     // initialize both transmitter and receiver first
-    infrared::transmitter::instance();
-    infrared::receiver::instance();
+    ir_tx::instance();
+    ir_rx::instance();
+
+    MX_USART2_UART_Init();
 
     // start receiving the code
-    infrared::receiver::instance().start(infrared::receiver::callback::create<&received_code>());
+    ir_rx::instance().start(ir_rx::callback::create<&received_code>(), ir_rx::occurs::REPEAT);
 
     // send test signal
-    infrared::transmitter::instance().send(testsignal, 1);
+    //ir_tx::instance().send(testsignal, 1);
 
     while (1)
     {
+        process_uart_rx();
+
         __WFI(); // simplest power saving
     }
 }
