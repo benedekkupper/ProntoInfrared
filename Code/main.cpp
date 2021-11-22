@@ -21,6 +21,7 @@
  */
 #include "main.h"
 #include "infrared_transmitter.h"
+#include "infrared_receiver.h"
 
 pronto_hex::static_raw<2> testsignal_2 ( 37000,
         { 0x0001, 0x0003, 0x0002, 0x0003 }
@@ -30,9 +31,24 @@ pronto_hex::static_raw<3 + 2> testsignal ( 37000,
         { 0x0006, 0x0003, 0x0003, 0x000C }
 );
 
+static void received_code(const pronto_hex::raw &code)
+{
+    // some way to debug the result
+    volatile int x = code.carrier_frequency();
+    x++;
+}
+
 extern "C" int app_main()
 {
-    infrared::transmitter::instance().send(testsignal, 3);
+    // initialize both transmitter and receiver first
+    infrared::transmitter::instance();
+    infrared::receiver::instance();
+
+    // start receiving the code
+    infrared::receiver::instance().start(infrared::receiver::callback::create<&received_code>());
+
+    // send test signal
+    infrared::transmitter::instance().send(testsignal, 1);
 
     while (1)
     {

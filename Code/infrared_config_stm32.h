@@ -100,6 +100,11 @@ namespace stm32
             return _channel;
         }
 
+        constexpr TIM_HandleTypeDef *hal_handle() const
+        {
+            return _htimx;
+        }
+
         constexpr uint32_t ll_channel() const
         {
             return ll_channel(_channel);
@@ -111,10 +116,35 @@ namespace stm32
             return ll_channel(TIM_CHANNEL_1) | ll_channel(TIM_CHANNEL_2);
         }
 
-        struct __DMA_HandleTypeDef *cc_dma() const
+        constexpr struct __DMA_HandleTypeDef *cc_dma_handle() const
         {
             assert(_htimx != nullptr);
             return _htimx->hdma[_dma_id];
+        }
+
+        constexpr DMA_TypeDef *cc_dma_regmap() const
+        {
+            return cc_dma_handle()->DmaBaseAddress;
+        }
+
+        constexpr uint32_t cc_dma_channel() const
+        {
+            return cc_dma_handle()->ChannelIndex >> 2;
+        }
+
+        constexpr uint32_t cc_dma_request() const
+        {
+            return 1 << (TIM_DIER_CC1DE_Pos + _dma_id - TIM_DMA_ID_CC1);
+        }
+
+        constexpr uint32_t cc_dma_tc_flag() const
+        {
+            return __HAL_DMA_GET_TC_FLAG_INDEX(cc_dma_handle());
+        }
+
+        constexpr uint32_t cc_dma_ht_flag() const
+        {
+            return __HAL_DMA_GET_HT_FLAG_INDEX(cc_dma_handle());
         }
 
         constexpr IRQn_Type update_irq() const
