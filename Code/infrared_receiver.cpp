@@ -189,7 +189,8 @@ void receiver::process_captures(size_t remaining_pairs)
 
     if (_period_count == 0)
     {
-        // the very first capture pair is invalid (don't exactly know why), discard it
+        // the very first capture pair is invalid, as the register values are from the previous code
+        // so discard it
         index++;
         captured_pairs--;
 

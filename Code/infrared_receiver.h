@@ -68,7 +68,7 @@ namespace infrared
 
         uint32_t learn_period(size_t offset, size_t count);
 
-        ETL_CONSTEXPR static unsigned TOLERANCE_BASE = 8;
+        ETL_CONSTEXPR static unsigned TOLERANCE_BASE = 4;
 
         template<typename T>
         ETL_CONSTEXPR static T add_tolerance(T in, unsigned divider = 1)
