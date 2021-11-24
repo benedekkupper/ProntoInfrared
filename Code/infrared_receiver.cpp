@@ -119,7 +119,7 @@ void receiver::stop()
 
 size_t receiver::remaining_pairs(__DMA_HandleTypeDef *hdma)
 {
-    return __HAL_DMA_GET_COUNTER(hdma) / 2;
+    return __HAL_DMA_GET_COUNTER(hdma) * sizeof(uint32_t) / sizeof(stm32::rx_pwm_pair);
 }
 
 void receiver::dma_event(__DMA_HandleTypeDef *hdma)
