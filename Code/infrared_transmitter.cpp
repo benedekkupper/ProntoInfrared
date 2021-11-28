@@ -35,42 +35,13 @@ transmitter::transmitter()
     NVIC_EnableIRQ(tim->update_irq());
 }
 
-bool transmitter::busy() const
+bool transmitter::active() const
 {
     return LL_TIM_IsEnabledCounter(stm32::ir_pwm_timer::tx()->regmap());
 }
 
-bool transmitter::send(pronto_hex::raw &code, callback cbk, size_t repeats)
+void transmitter::emit_begin()
 {
-    if (busy())
-    {
-        return false;
-    }
-
-    // TODO: sort out how the repeating part should really be handled
-
-    // prepare context
-    _current_code = &code;
-    _complete_cbk = cbk;
-    if (code.once_length() > 0)
-    {
-        // starting with once part of the code
-        _remaining_symbols = _current_code->once_length() * 2;
-        _current_symbol_length = &_current_code->once_pairs().data()->wLEDflash_on;
-        _remaining_repeats = (_current_code->repeat_length() > 0) ? repeats : 0;
-    }
-    else if (code.repeat_length() > 0)
-    {
-        // starting with repeating part of the code, send it at least once
-        _remaining_symbols = _current_code->once_length() * 2;
-        _current_symbol_length = &_current_code->once_pairs().data()->wLEDflash_on;
-        _remaining_repeats = repeats > 0 ? repeats - 1 : 0;
-    }
-    else
-    {
-        return false;
-    }
-
     auto tim = stm32::ir_pwm_timer::tx();
 
     // clear timer bits from previous send
@@ -78,8 +49,8 @@ bool transmitter::send(pronto_hex::raw &code, callback cbk, size_t repeats)
     LL_TIM_DisableIT_UPDATE(tim->regmap());
 
     // set the timer clock to 2 * carrier frequency, reload to 2
-    uint32_t prescaler = tim->frequency() / (2 * _current_code->carrier_frequency());
     constexpr uint32_t period = 2;
+    uint32_t prescaler = tim->frequency() / (period * _current_code->carrier_frequency());
     LL_TIM_SetPrescaler(tim->regmap(), prescaler - 1);
     LL_TIM_SetAutoReload(tim->regmap(), period - 1);
 
@@ -96,8 +67,6 @@ bool transmitter::send(pronto_hex::raw &code, callback cbk, size_t repeats)
 
     // continue preloading following symbols in update ISR
     LL_TIM_EnableIT_UPDATE(tim->regmap());
-
-    return true;
 }
 
 TX_IR_PWM_TIMER_ISR()
@@ -115,39 +84,36 @@ void transmitter::preload_next_symbol()
     // we most likely got here due to an update event, clear it
     LL_TIM_ClearFlag_UPDATE(tim->regmap());
 
-    // when we don't have anything to send, the timer should already be stopped from OPM
-    if ((_remaining_symbols + _remaining_repeats) == 0)
+    // handle end of sequence
+    if (_remaining_symbols == 0)
     {
-        assert(!busy());
-        return send_cleanup();
-    }
-    else if (_remaining_symbols == 0)
-    {
-        // restart the repeating part
-        _remaining_symbols = _current_code->repeat_length() * 2;
-        _current_symbol_length = &_current_code->repeat_pairs().data()->wLEDflash_on;
-        _remaining_repeats--;
-    }
-
-    auto next_length = *_current_symbol_length;
-    if (_remaining_symbols == 1)
-    {
-        // the last symbol (which is a space) is typically too long to fit into 8-bit repetition counter
-        // which is only a problem if we're chaining codes
-        next_length = std::min(next_length, pronto_hex::word(std::numeric_limits<uint8_t>::max() + 1));
-
-        // TODO: we should instead multiply the prescaler or the reload register
-
-        if (_remaining_repeats == 0)
+        if (_repeat || active())
         {
-            // stop the timer after the last symbol
-            LL_TIM_SetOnePulseMode(tim->regmap(), LL_TIM_ONEPULSEMODE_SINGLE);
+            // restart the repeating part
+            load_sequence(_current_code->repeat_pairs());
         }
+        else
+        {
+            // when we don't have anything to send, the timer should already be stopped from OPM
+            return emit_end();
+        }
+    }
+
+    // the repetition counter is 8-bits wide only, and there are codes that use longer symbols
+    // so add this logic to split longer symbols into multiple iterations
+    auto next_length = _residual_length;
+    if (next_length == 0)
+    {
+        next_length = *_current_symbol_length;
+    }
+    if (next_length <= stm32::ir_pwm_timer::max_repetitions())
+    {
+        _residual_length = 0;
     }
     else
     {
-        // this design expects the symbols to be up to 256 long, as this is the HW's limitation
-        assert(next_length <= std::numeric_limits<uint8_t>::max());
+        _residual_length = next_length - stm32::ir_pwm_timer::max_repetitions();
+        next_length = stm32::ir_pwm_timer::max_repetitions();
     }
 
     // set repetition counter to length of symbol
@@ -177,11 +143,53 @@ void transmitter::preload_next_symbol()
         compare_reg = 0;
     }
 
-    _current_symbol_length++;
-    _remaining_symbols--;
+    // this symbol doesn't need to be extended any longer
+    if (_residual_length == 0)
+    {
+        // move on to the next symbol type
+        _current_symbol_length++;
+        _remaining_symbols--;
+
+        if ((_remaining_symbols == 0) && !_repeat)
+        {
+            // stop the timer after the last symbol
+            LL_TIM_SetOnePulseMode(tim->regmap(), LL_TIM_ONEPULSEMODE_SINGLE);
+        }
+    }
 }
 
-void transmitter::send_cleanup()
+bool transmitter::emit(pronto_hex::raw &code, callback cbk, bool continuous)
+{
+    if (active())
+    {
+        return false;
+    }
+
+    if (code.once_length() > 0)
+    {
+        // starting with once part of the code
+        load_sequence(code.once_pairs());
+    }
+    else if (code.repeat_length() > 0)
+    {
+        // starting with repeating part of the code, send it at least once
+        load_sequence(code.repeat_pairs());
+    }
+    else
+    {
+        return false;
+    }
+
+    // save context
+    _repeat = continuous;
+    _current_code = &code;
+    _complete_cbk = cbk;
+
+    emit_begin();
+    return true;
+}
+
+void transmitter::emit_end()
 {
     // delete owned code
     if (_complete_cbk)

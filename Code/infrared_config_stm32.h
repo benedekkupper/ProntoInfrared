@@ -152,6 +152,11 @@ namespace stm32
             return _update_irqn;
         }
 
+        constexpr static size_t max_repetitions()
+        {
+            return std::numeric_limits<uint8_t>::max() + 1;
+        }
+
     private:
         TIM_TypeDef *_timx;
         TIM_HandleTypeDef *_htimx;

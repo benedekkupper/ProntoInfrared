@@ -39,25 +39,41 @@ namespace infrared
         }
 
         template<typename T>
-        bool send(std::unique_ptr<pronto_hex::raw, T> code, size_t repeats = 0)
+        bool emit(std::unique_ptr<pronto_hex::raw, T> code, bool continuous = false)
         {
-            return send(*code.release(), callback::create<T>(code.get_deleter()), repeats);
+            return emit(*code.release(), callback::create<T>(code.get_deleter()), continuous);
         }
 
-        bool send(pronto_hex::raw &code, callback cbk, size_t repeats = 0);
-
-        inline bool send(const pronto_hex::raw &code, size_t repeats = 0)
+        inline bool emit(const pronto_hex::raw &code, bool continuous = false)
         {
-            return send(*const_cast<pronto_hex::raw*>(&code), callback(), repeats);
+            return emit(*const_cast<pronto_hex::raw*>(&code), callback(), continuous);
         }
 
-        bool busy() const;
+        /// @brief  Emit an infrared code in either single shot mode, or continuously, until terminated.
+        bool emit(pronto_hex::raw &code, callback cbk, bool continuous = false);
+
+        /// @brief  Indicates if an infrared code transmission is in progress.
+        bool active() const;
+
+        /// @brief  End the current continuously repeating code transmission. The termination is asynchronous.
+        void terminate()
+        {
+            _repeat = false;
+        }
 
         // only to be used by ISR
         void preload_next_symbol();
 
     private:
-        void send_cleanup();
+        void load_sequence(const etl::span<const pronto_hex::raw::burst_pair> &seq)
+        {
+            _remaining_symbols = seq.size() * 2;
+            _current_symbol_length = &seq.data()->wLEDflash_on;
+            _residual_length = 0;
+        }
+
+        void emit_begin();
+        void emit_end();
 
         transmitter();
 
@@ -65,7 +81,8 @@ namespace infrared
         const pronto_hex::raw *_current_code = nullptr;
         const pronto_hex::word *_current_symbol_length = nullptr;
         size_t _remaining_symbols = 0;
-        size_t _remaining_repeats = 0;
+        pronto_hex::word _residual_length = 0;
+        bool _repeat = false;
     };
 }
 

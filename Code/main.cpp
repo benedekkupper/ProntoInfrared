@@ -92,7 +92,7 @@ static void process_uart_rx()
                     auto code = pronto_hex::raw::from_string(code_str);
                     if (code.get() != nullptr)
                     {
-                        infrared::transmitter::instance().send(std::move(code));
+                        infrared::transmitter::instance().emit(std::move(code));
                     }
 
                     HAL_UART_AbortReceive(uart);
