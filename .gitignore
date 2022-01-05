@@ -46,3 +46,5 @@
 _autosave*
 build
 doc/*
+/Debug/
+/Release/

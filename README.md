@@ -5,7 +5,6 @@ and send the Pronto HEX encoded string over UART, and can emit infrared codes fr
 
 The *Code* is written to be very portable across STM32's, to adapt to your hardware, just take over the Cube
 configuration parameters, and adapt the configuration section at the top of `Code/infrared_config_stm32.h`.
-To build the code, you will need to include the [Embedded Template Library][etl].
 
 A very detailed project report is available on [hackaday.io][hackaday].
 
