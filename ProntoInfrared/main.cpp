@@ -5,7 +5,7 @@
  * @brief   The application's main()
  *
  * This file is part of ProntoInfrared (https://github.com/benedekkupper/ProntoInfrared).
- * Copyright (c) 2021 Benedek Kupper.
+ * Copyright (c) 2024 Benedek Kupper.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,16 +20,12 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #include "main.h"
-#include "infrared_transmitter.h"
-#include "infrared_receiver.h"
+#include "infrared_receiver.hpp"
+#include "infrared_transmitter.hpp"
 
-pronto_hex::static_raw<2> testsignal_2 ( 37000,
-        { 0x0001, 0x0003, 0x0002, 0x0003 }
-);
-pronto_hex::static_raw<3 + 2> testsignal ( 37000,
-        { 0x0006, 0x0002, 0x0004, 0x0002, 0x0004, 0x0006 },
-        { 0x0006, 0x0003, 0x0003, 0x000C }
-);
+pronto_hex::static_raw<2> testsignal_2(37000, {0x0001, 0x0003, 0x0002, 0x0003});
+pronto_hex::static_raw<3 + 2> testsignal(37000, {0x0006, 0x0002, 0x0004, 0x0002, 0x0004, 0x0006},
+                                         {0x0006, 0x0003, 0x0003, 0x000C});
 
 static constexpr size_t PRONTO_STRING_BUFFER_SIZE = 512;
 
@@ -37,12 +33,12 @@ static std::array<char, PRONTO_STRING_BUFFER_SIZE> rx_buffer;
 static std::array<char, PRONTO_STRING_BUFFER_SIZE> tx_buffer;
 
 extern UART_HandleTypeDef huart2;
-static UART_HandleTypeDef *const uart = &huart2;
+static UART_HandleTypeDef* const uart = &huart2;
 
-static void received_code(const pronto_hex::raw &code)
+static void received_code(const pronto_hex::raw& code)
 {
     auto slen = code.to_string(tx_buffer);
-    if ((slen > 0) && (slen <= tx_buffer.size() - 2))
+    if ((slen > 0) and (slen <= tx_buffer.size() - 2))
     {
         tx_buffer[slen++] = '\n';
         tx_buffer[slen++] = '\r';
@@ -63,13 +59,13 @@ static void process_uart_rx()
     }
     else
     {
-        size_t remaining =  __HAL_DMA_GET_COUNTER(uart->hdmarx);
+        size_t remaining = __HAL_DMA_GET_COUNTER(uart->hdmarx);
         size_t last_index = rx_buffer.size() - remaining;
 
         // first find the first 0 digit
-        if ((start_index < 0) && (processed_index < last_index))
+        if ((start_index < 0) and (processed_index < last_index))
         {
-            for (auto &i = processed_index; i < last_index; i++)
+            for (auto& i = processed_index; i < last_index; i++)
             {
                 auto c = rx_buffer[i];
                 if (c == '0')
@@ -81,14 +77,15 @@ static void process_uart_rx()
         }
 
         // then find the line termination
-        if ((start_index >= 0) && (processed_index < last_index))
+        if ((start_index >= 0) and (processed_index < last_index))
         {
-            for (auto &i = processed_index; i < last_index; i++)
+            for (auto& i = processed_index; i < last_index; i++)
             {
                 auto c = rx_buffer[i];
-                if ((c == '\n') || (c == '\r'))
+                if ((c == '\n') or (c == '\r'))
                 {
-                    auto code_str = etl::span<const char>(&rx_buffer[start_index], processed_index - start_index);
+                    auto code_str = std::span<const char>(&rx_buffer[start_index],
+                                                          processed_index - start_index);
                     auto code = pronto_hex::raw::from_string(code_str);
                     if (code.get() != nullptr)
                     {
@@ -100,7 +97,6 @@ static void process_uart_rx()
                 }
             }
         }
-
     }
 }
 
@@ -119,7 +115,7 @@ extern "C" int app_main()
     ir_rx::instance().start(ir_rx::callback::create<&received_code>(), ir_rx::occurs::REPEAT);
 
     // send test signal
-    //ir_tx::instance().send(testsignal, 1);
+    // ir_tx::instance().send(testsignal, 1);
 
     while (1)
     {

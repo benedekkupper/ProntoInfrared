@@ -5,7 +5,7 @@
  * @brief   Infrared receiver using STM32 timer
  *
  * This file is part of ProntoInfrared (https://github.com/benedekkupper/ProntoInfrared).
- * Copyright (c) 2021 Benedek Kupper.
+ * Copyright (c) 2024 Benedek Kupper.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,9 +19,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-#include "infrared_receiver.h"
+#include "infrared_receiver.hpp"
 
-using namespace infrared;
+namespace infrared
+{
 
 receiver::receiver()
 {
@@ -40,7 +41,7 @@ receiver::receiver()
 
     // burst DMA mode is used to transfer both CC channels on a single CC event
     LL_TIM_ConfigDMABurst(tim->regmap(), offsetof(TIM_TypeDef, CCR1) / sizeof(uint32_t),
-            LL_TIM_DMABURST_LENGTH_2TRANSFERS);
+                          LL_TIM_DMABURST_LENGTH_2TRANSFERS);
 
     tim->cc_dma_handle()->XferCpltCallback = &receiver::dma_event;
     tim->cc_dma_handle()->XferHalfCpltCallback = &receiver::dma_event;
@@ -65,8 +66,8 @@ void receiver::start()
 
     // configure DMA
     HAL_DMA_Start_IT(tim->cc_dma_handle(), reinterpret_cast<uintptr_t>(&tim->regmap()->DMAR),
-            reinterpret_cast<uintptr_t>(_rx_pwm_buffer.data()),
-            sizeof(_rx_pwm_buffer) / sizeof(uint32_t));
+                     reinterpret_cast<uintptr_t>(rx_pwm_buffer_.data()),
+                     sizeof(rx_pwm_buffer_) / sizeof(uint32_t));
     __HAL_TIM_ENABLE_DMA(tim->hal_handle(), tim->cc_dma_request());
 
     // start the timer
@@ -83,8 +84,8 @@ void receiver::abort_capture()
     __HAL_TIM_DISABLE_DMA(tim->hal_handle(), tim->cc_dma_request());
     HAL_DMA_Abort_IT(tim->cc_dma_handle());
 
-    _period_count = 0;
-    _rx_code.clear();
+    period_count_ = 0;
+    rx_code_.clear();
 }
 
 bool receiver::start(callback cbk, occurs mode)
@@ -94,9 +95,9 @@ bool receiver::start(callback cbk, occurs mode)
         return false;
     }
 
-    _success = false;
-    _callback = cbk;
-    _mode = mode;
+    success_ = false;
+    callback_ = cbk;
+    mode_ = mode;
     start();
 
     return true;
@@ -117,12 +118,12 @@ void receiver::stop()
     LL_TIM_DisableIT_UPDATE(tim->regmap());
 }
 
-size_t receiver::remaining_pairs(__DMA_HandleTypeDef *hdma)
+size_t receiver::remaining_pairs(__DMA_HandleTypeDef* hdma)
 {
     return __HAL_DMA_GET_COUNTER(hdma) * sizeof(uint32_t) / sizeof(stm32::rx_pwm_pair);
 }
 
-void receiver::dma_event(__DMA_HandleTypeDef *hdma)
+void receiver::dma_event(__DMA_HandleTypeDef* hdma)
 {
     auto this_ = reinterpret_cast<receiver*>(hdma->Parent);
     this_->process_captures(remaining_pairs(hdma));
@@ -143,8 +144,9 @@ void receiver::timeout()
         auto remaining = remaining_pairs(tim->cc_dma_handle());
         // the remaining count can be the buffer size if
         // a) there were no transfers
-        // b) the whole buffer has been filled, and the register was reset to initial length due to circular mode
-        if (transfer_complete || (remaining < _rx_pwm_buffer.size()))
+        // b) the whole buffer has been filled, and the register was reset to initial length due to
+        // circular mode
+        if (transfer_complete or (remaining < rx_pwm_buffer_.size()))
         {
             process_captures(remaining);
         }
@@ -158,7 +160,7 @@ void receiver::timeout()
     }
 
     // restart/stop capturing
-    if ((_mode == occurs::ONCE) && _success)
+    if ((mode_ == occurs::ONCE) and success_)
     {
         stop();
     }
@@ -184,10 +186,10 @@ RX_IR_PWM_TIMER_ISR()
 
 void receiver::process_captures(size_t remaining_pairs)
 {
-    size_t captured_pairs = _rx_pwm_buffer.size() - remaining_pairs;
+    size_t captured_pairs = rx_pwm_buffer_.size() - remaining_pairs;
     size_t index = 0;
 
-    if (_period_count == 0)
+    if (period_count_ == 0)
     {
         // the very first capture pair is invalid, as the register values are from the previous code
         // so discard it
@@ -195,45 +197,45 @@ void receiver::process_captures(size_t remaining_pairs)
         captured_pairs--;
 
         // run frequency identification algorithm
-        _period_count = learn_period(index, captured_pairs);
-        if (_period_count == 0)
+        period_count_ = learn_period(index, captured_pairs);
+        if (period_count_ == 0)
         {
             abort_capture();
             return;
         }
 
-        assert(!_rx_code.has_carrier_frequency());
-        _rx_code.set_carrier_frequency(stm32::ir_pwm_timer::rx()->frequency() / _period_count);
+        assert(!rx_code_.has_carrier_frequency());
+        rx_code_.set_carrier_frequency(stm32::ir_pwm_timer::rx()->frequency() / period_count_);
     }
     // we handle half-complete interrupts as well,
     // so only process from the second half of the buffer
-    else if (remaining_pairs < (_rx_pwm_buffer.size() / 2))
+    else if (remaining_pairs < (rx_pwm_buffer_.size() / 2))
     {
-        index = (_rx_pwm_buffer.size() / 2);
-        captured_pairs -= (_rx_pwm_buffer.size() / 2);
+        index = (rx_pwm_buffer_.size() / 2);
+        captured_pairs -= (rx_pwm_buffer_.size() / 2);
     }
     // due to circular DMA, remaining count will reset to initial value when transfer is complete
-    else if (remaining_pairs == _rx_pwm_buffer.size())
+    else if (remaining_pairs == rx_pwm_buffer_.size())
     {
-        index = (_rx_pwm_buffer.size() / 2);
-        captured_pairs = (_rx_pwm_buffer.size() / 2);
+        index = (rx_pwm_buffer_.size() / 2);
+        captured_pairs = (rx_pwm_buffer_.size() / 2);
     }
 
     for (; captured_pairs > 0; captured_pairs--, index++)
     {
-        const auto &pair = _rx_pwm_buffer[index];
+        const auto& pair = rx_pwm_buffer_[index];
 
         // check valid ON pulse length
-        if ((pair.on_count < subtract_tolerance(_period_count, 2)) ||
-            (pair.on_count > add_tolerance(_period_count, 2)))
+        if ((pair.on_count < subtract_tolerance(period_count_, 2)) or
+            (pair.on_count > add_tolerance(period_count_, 2)))
         {
             break; // goto error
         }
 
         // each pair starts with an ON pulse
-        _rx_code.increment_last_mark();
+        rx_code_.increment_last_mark();
 
-        if (pair.total_count < add_tolerance(_period_count))
+        if (pair.total_count < add_tolerance(period_count_))
         {
             //       _____
             // |____|     |
@@ -245,9 +247,9 @@ void receiver::process_captures(size_t remaining_pairs)
             // |____|    |           |
             //           v           v
             // last baud of flash + space
-            _rx_code.append_spaces(get_off_length(pair.total_count));
+            rx_code_.append_spaces(get_off_length(pair.total_count));
 
-            if (_rx_code.sequence_length() == _rx_code.max_size())
+            if (rx_code_.sequence_length() == rx_code_.max_size())
             {
                 // we have reached the end of the code buffer,
                 // but the code is longer
@@ -267,16 +269,16 @@ void receiver::process_captures(size_t remaining_pairs)
 void receiver::process_timeout()
 {
     // complete the detected IR code
-    if (_rx_code.has_carrier_frequency())
+    if (rx_code_.has_carrier_frequency())
     {
         auto timeout_count = LL_TIM_GetAutoReload(stm32::ir_pwm_timer::rx()->regmap());
-        _rx_code.append_spaces(get_off_length(timeout_count));
+        rx_code_.append_spaces(get_off_length(timeout_count));
 
         // receive complete
-        _success = true;
-        if (_callback)
+        success_ = true;
+        if (callback_)
         {
-            _callback(_rx_code);
+            callback_(rx_code_);
         }
     }
 }
@@ -292,7 +294,7 @@ uint32_t receiver::learn_period(size_t offset, size_t count)
     time_accumulator acc;
     for (auto index = offset; count > 0; count--, index++)
     {
-        const auto &pair = _rx_pwm_buffer[index];
+        const auto& pair = rx_pwm_buffer_[index];
         size_t off_halfperiods;
 
         acc.accumulate_on(pair);
@@ -321,14 +323,14 @@ uint32_t receiver::learn_period(size_t offset, size_t count)
             return 0;
         }
         // ON timing is beyond tolerable of average
-        if ((acc.average_on() < subtract_tolerance(pair.on_count)) ||
+        if ((acc.average_on() < subtract_tolerance(pair.on_count)) or
             (acc.average_on() > add_tolerance(pair.on_count)))
         {
             return 0;
         }
         // total timing is beyond tolerable of average
         const auto avg_total = (off_halfperiods + 1) * acc.average_period() / 2;
-        if ((avg_total < subtract_tolerance(pair.total_count)) ||
+        if ((avg_total < subtract_tolerance(pair.total_count)) or
             (avg_total > add_tolerance(pair.total_count)))
         {
             return 0;
@@ -337,3 +339,5 @@ uint32_t receiver::learn_period(size_t offset, size_t count)
 
     return acc.average_period();
 }
+
+} // namespace infrared

@@ -5,7 +5,7 @@
  * @brief   Pronto HEX infrared code format
  *
  * This file is part of ProntoInfrared (https://github.com/benedekkupper/ProntoInfrared).
- * Copyright (c) 2021 Benedek Kupper.
+ * Copyright (c) 2024 Benedek Kupper.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,13 +19,14 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-#include "pronto_hex.h"
-#include <cstdlib>
+#include "pronto_hex.hpp"
 #include <cctype>
+#include <cstdlib>
 
-using namespace pronto_hex;
+namespace pronto_hex
+{
 
-size_t raw::to_string(const etl::span<char> &buffer) const
+size_t raw::to_string(const std::span<char>& buffer) const
 {
     // check if we fit in the buffer, including termination
     if (buffer.size() < (word_to_string_size(word_size()) + 1))
@@ -36,7 +37,7 @@ size_t raw::to_string(const etl::span<char> &buffer) const
 
     // convert word-by-word
     size_t out_offset = 0;
-    auto words = etl::span<const word>(reinterpret_cast<const word*>(this), word_size());
+    auto words = std::span<const word>(reinterpret_cast<const word*>(this), word_size());
     for (auto w : words)
     {
         size_t i = out_offset + WORD_STRING_SIZE;
@@ -67,7 +68,7 @@ size_t raw::to_string(const etl::span<char> &buffer) const
     return out_offset - 1;
 }
 
-bool raw::parse_into(const etl::span<const char> &buffer, raw* target, size_t pairs_count)
+bool raw::parse_into(const std::span<const char>& buffer, raw* target, size_t pairs_count)
 {
     size_t len = string_to_word_size(buffer.size());
 
@@ -81,22 +82,22 @@ bool raw::parse_into(const etl::span<const char> &buffer, raw* target, size_t pa
     auto words = reinterpret_cast<word*>(target);
     for (word *w = &words[0], offset = 0; w < &words[len]; w++, offset += (WORD_STRING_SIZE + 1))
     {
-        char *wend;
+        char* wend;
 
         *w = strtol(&buffer[offset], &wend, 16);
 
         // check that strtol() processed exact number of characters, and that the next is a space
-        if ((wend != &buffer[offset + WORD_STRING_SIZE]) ||
-            ((wend <= &buffer.back()) && !isspace(*wend)))
+        if ((wend != &buffer[offset + WORD_STRING_SIZE]) or
+            ((wend <= &buffer.back()) and !isspace(*wend)))
         {
             // invalidate header and abort
-            target->_header.wFrqDiv = 0;
+            target->header_.wFrqDiv = 0;
             break;
         }
     }
 
     // now check the header to see if valid RAW format
-    if (!is_raw_header(target->_header) || (target->word_size() != len))
+    if (!is_raw_header(target->header_) or (target->word_size() != len))
     {
         // TODO: maybe clear the header
         return false;
@@ -107,29 +108,27 @@ bool raw::parse_into(const etl::span<const char> &buffer, raw* target, size_t pa
     }
 }
 
-std::unique_ptr<raw> raw::from_string(const etl::span<const char> &buffer)
+std::unique_ptr<raw> raw::from_string(const std::span<const char>& buffer)
 {
-    auto error_ptr = std::unique_ptr<raw>(nullptr);
-
     // check for size error
     if ((buffer.size() % (WORD_STRING_SIZE + 1)) != WORD_STRING_SIZE)
     {
-        return error_ptr;
+        return {};
     }
 
     // convert string length to word length
     size_t len = string_to_word_size(buffer.size());
 
     // allocate word buffer
-    auto words = new word[len];
-    auto ptr = std::unique_ptr<raw>(reinterpret_cast<raw*>(words));
-
-    if ((words != nullptr) && parse_into(buffer, ptr.get(), len / 2))
+    auto ptr = reinterpret_cast<raw*>(new word[len]);
+    if ((ptr != nullptr) and parse_into(buffer, ptr, len / 2))
     {
-        return ptr;
+        return std::unique_ptr<raw>(ptr);
     }
     else
     {
-        return error_ptr;
+        return {};
     }
 }
+
+} // namespace pronto_hex

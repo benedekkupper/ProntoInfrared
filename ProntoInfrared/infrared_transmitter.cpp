@@ -5,7 +5,7 @@
  * @brief   Infrared transmitter using STM32 timer
  *
  * This file is part of ProntoInfrared (https://github.com/benedekkupper/ProntoInfrared).
- * Copyright (c) 2021 Benedek Kupper.
+ * Copyright (c) 2024 Benedek Kupper.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,10 +19,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-#include "infrared_transmitter.h"
-#include "infrared_config_stm32.h"
+#include "infrared_transmitter.hpp"
+#include "infrared_config_stm32.hpp"
 
-using namespace infrared;
+namespace infrared
+{
 
 transmitter::transmitter()
 {
@@ -50,7 +51,7 @@ void transmitter::emit_begin()
 
     // set the timer clock to 2 * carrier frequency, reload to 2
     constexpr uint32_t period = 2;
-    uint32_t prescaler = tim->frequency() / (period * _current_code->carrier_frequency());
+    uint32_t prescaler = tim->frequency() / (period * current_code_->carrier_frequency());
     LL_TIM_SetPrescaler(tim->regmap(), prescaler - 1);
     LL_TIM_SetAutoReload(tim->regmap(), period - 1);
 
@@ -85,12 +86,12 @@ void transmitter::preload_next_symbol()
     LL_TIM_ClearFlag_UPDATE(tim->regmap());
 
     // handle end of sequence
-    if (_remaining_symbols == 0)
+    if (remaining_symbols_ == 0)
     {
-        if (_repeat || active())
+        if (repeat_ or active())
         {
             // restart the repeating part
-            load_sequence(_current_code->repeat_pairs());
+            load_sequence(current_code_->repeat_pairs());
         }
         else
         {
@@ -101,18 +102,18 @@ void transmitter::preload_next_symbol()
 
     // the repetition counter is 8-bits wide only, and there are codes that use longer symbols
     // so add this logic to split longer symbols into multiple iterations
-    auto next_length = _residual_length;
+    auto next_length = residual_length_;
     if (next_length == 0)
     {
-        next_length = *_current_symbol_length;
+        next_length = *current_symbol_length_;
     }
     if (next_length <= stm32::ir_pwm_timer::max_repetitions())
     {
-        _residual_length = 0;
+        residual_length_ = 0;
     }
     else
     {
-        _residual_length = next_length - stm32::ir_pwm_timer::max_repetitions();
+        residual_length_ = next_length - stm32::ir_pwm_timer::max_repetitions();
         next_length = stm32::ir_pwm_timer::max_repetitions();
     }
 
@@ -121,12 +122,12 @@ void transmitter::preload_next_symbol()
 
     // ON will produce half / whole active depending on modulated / not
     // OFF will produce whole passive
-    bool flash_on = (_remaining_symbols & 1) == 0;
-    auto &compare_reg = (&tim->regmap()->CCR1)[tim->channel_index()];
+    bool flash_on = (remaining_symbols_ & 1) == 0;
+    auto& compare_reg = (&tim->regmap()->CCR1)[tim->channel_index()];
     if (flash_on)
     {
         auto arr = LL_TIM_GetAutoReload(tim->regmap());
-        if (_current_code->is_oscillated())
+        if (current_code_->is_oscillated())
         {
             // modulate the symbol with carrier frequency
             compare_reg = (arr + 1) / 2;
@@ -144,13 +145,13 @@ void transmitter::preload_next_symbol()
     }
 
     // this symbol doesn't need to be extended any longer
-    if (_residual_length == 0)
+    if (residual_length_ == 0)
     {
         // move on to the next symbol type
-        _current_symbol_length++;
-        _remaining_symbols--;
+        current_symbol_length_++;
+        remaining_symbols_--;
 
-        if ((_remaining_symbols == 0) && !_repeat)
+        if ((remaining_symbols_ == 0) and !repeat_)
         {
             // stop the timer after the last symbol
             LL_TIM_SetOnePulseMode(tim->regmap(), LL_TIM_ONEPULSEMODE_SINGLE);
@@ -158,7 +159,7 @@ void transmitter::preload_next_symbol()
     }
 }
 
-bool transmitter::emit(pronto_hex::raw &code, callback cbk, bool continuous)
+bool transmitter::emit(pronto_hex::raw& code, callback cbk, bool continuous)
 {
     if (active())
     {
@@ -181,9 +182,9 @@ bool transmitter::emit(pronto_hex::raw &code, callback cbk, bool continuous)
     }
 
     // save context
-    _repeat = continuous;
-    _current_code = &code;
-    _complete_cbk = cbk;
+    repeat_ = continuous;
+    current_code_ = &code;
+    complete_cbk_ = cbk;
 
     emit_begin();
     return true;
@@ -192,10 +193,12 @@ bool transmitter::emit(pronto_hex::raw &code, callback cbk, bool continuous)
 void transmitter::emit_end()
 {
     // delete owned code
-    if (_complete_cbk)
+    if (complete_cbk_)
     {
-        _complete_cbk(const_cast<pronto_hex::raw*>(_current_code));
+        complete_cbk_(const_cast<pronto_hex::raw*>(current_code_));
     }
-    _current_code = nullptr;
-    _complete_cbk = callback();
+    current_code_ = nullptr;
+    complete_cbk_ = {};
 }
+
+} // namespace infrared
