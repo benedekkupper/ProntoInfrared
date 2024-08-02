@@ -2,6 +2,8 @@
 
 This project aims to deliver an STM32 firmware that can record infrared codes from remote controllers
 and send the Pronto HEX encoded string over UART, and can emit infrared codes from received strings.
+[Pronto HEX][prontoformats] is a universal format that can describe any modulated IR code,
+which is why it's so widely supported for IR learning.
 
 The *ProntoInfrared* is written to be very portable across STM32's, to adapt to your hardware,
 just swap out the underlying STM32CubeMX configuration,
@@ -11,3 +13,4 @@ A very detailed project report is available on [hackaday.io][hackaday].
 
 [hackaday]: https://hackaday.io/project/182577
 [etl]: https://github.com/ETLCPP/etl
+[prontoformats]: https://www.majority.nl/files/prontoirformats.pdf
